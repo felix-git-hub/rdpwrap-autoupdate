@@ -7,11 +7,8 @@ Firstly，Download RDP Wrapper here:
 https://github.com/stascorp/rdpwrap/releases
 
 
-Then,please use RDPWrapperupdate.bat  
+Then,please use autoupdate.bat with administrator permission
 
-Or,There are rdpwrap.ini  
-https://raw.githubusercontents.com/sebaxakerhtc/rdpwrap.ini/master/rdpwrap.ini  
-https://raw.githubusercontent.com/sebaxakerhtc/rdpwrap.ini/master/rdpwrap.ini  
 
 Thanks to [asmtorn's project](https://github.com/asmtron/rdpwrap)!
 
