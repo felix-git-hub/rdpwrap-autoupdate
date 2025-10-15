@@ -1,7 +1,5 @@
 # RDP Wrapper Auto-Update for Latest `rdpwrap.ini`
 
-# RDP Wrapper 自动更新最新 `rdpwrap.ini` 文件
-
 ## English Version
 
 **RDP Wrapper Auto-Update for Latest `rdpwrap.ini`**
