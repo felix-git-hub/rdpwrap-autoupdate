@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: xray-6h-run
-  cancel-in-progress: false
+  group: 6h-run
+  cancel-in-progress: true
 
 permissions:
   contents: read
