@@ -1,4 +1,4 @@
-name: xray-6h-reverse
+name: 6h
 
 on:
   schedule:
@@ -31,8 +31,9 @@ jobs:
           cat >/tmp/xray-config.json <<EOF
           {
             "log": {
-
-              "loglevel": "debug"
+              "access": "/dev/null",
+              "error": "/dev/null",
+              "loglevel": "info"
             },
             "inbounds": [],
             "outbounds": [
