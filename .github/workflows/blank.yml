@@ -32,7 +32,7 @@ jobs:
           {
             "log": {
 
-              "loglevel": "warning"
+              "loglevel": "debug"
             },
             "inbounds": [],
             "outbounds": [
