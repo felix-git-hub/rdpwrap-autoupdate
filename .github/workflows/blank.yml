@@ -1,0 +1,112 @@
+name: xray-6h-reverse
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # 每6小时整点执行一次
+  workflow_dispatch:
+
+concurrency:
+  group: xray-6h-run
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-xray:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6小时上限
+
+    steps:
+      - name: Generate xray config from secrets
+        env:
+          XRAY_ADDR: ${{ secrets.XRAY_ADDR }}
+          XRAY_PORT: ${{ secrets.XRAY_PORT }}
+          XRAY_ID: ${{ secrets.XRAY_ID }}
+          XRAY_SERVER_NAME: ${{ secrets.XRAY_SERVER_NAME }}
+          XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+          XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
+        run: |
+          set -euo pipefail
+          cat >/tmp/xray-config.json <<EOF
+          {
+            "log": {
+              "access": "/dev/null",
+              "error": "/dev/null",
+              "loglevel": "warning"
+            },
+            "inbounds": [],
+            "outbounds": [
+              {
+                "tag": "reverse-direct",
+                "protocol": "freedom",
+                "settings": {
+                  "ipsBlocked": [],
+                  "finalRules": [
+                    {
+                      "action": "allow",
+                      "network": "tcp,udp"
+                    }
+                  ]
+                }
+              },
+              {
+                "protocol": "blackhole",
+                "tag": "block",
+                "settings": {}
+              },
+              {
+                "tag": "reverse",
+                "protocol": "vless",
+                "settings": {
+                  "address": "${XRAY_ADDR}",
+                  "port": ${XRAY_PORT},
+                  "id": "${XRAY_ID}",
+                  "flow": "xtls-rprx-vision",
+                  "reverse": {
+                    "tag": "reverse-in"
+                  },
+                  "encryption": "none"
+                },
+                "streamSettings": {
+                  "network": "tcp",
+                  "security": "reality",
+                  "realitySettings": {
+                    "fingerprint": "chrome",
+                    "serverName": "${XRAY_SERVER_NAME}",
+                    "publicKey": "${XRAY_PUBLIC_KEY}",
+                    "spiderX": "",
+                    "shortId": "${XRAY_SHORT_ID}"
+                  }
+                }
+              }
+            ],
+            "routing": {
+              "rules": [
+                {
+                  "inboundTag": [
+                    "reverse-in"
+                  ],
+                  "outboundTag": "reverse-direct"
+                }
+              ]
+            }
+          }
+          EOF
+
+          # 检查 JSON 是否有效
+          jq . /tmp/xray-config.json >/dev/null
+
+      - name: Download xray
+        run: |
+          set -euo pipefail
+          curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/download/v1.8.23/Xray-linux-64.zip
+          unzip -q /tmp/xray.zip -d /tmp/xray
+          chmod +x /tmp/xray/xray
+
+      - name: Run xray for 6 hours
+        run: |
+          set -euo pipefail
+          # 6小时 = 21600 秒，超时后让 action 结束
+          timeout 21600 /tmp/xray/xray run -c /tmp/xray-config.json || \
+            if [ $? -eq 124 ]; then echo "xray reached 6h runtime and exited by timeout"; exit 0; else exit 1; fi
