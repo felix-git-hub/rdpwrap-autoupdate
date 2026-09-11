@@ -22,7 +22,7 @@ jobs:
         env:
           XRAY_ADDR: ${{ secrets.XRAY_ADDR }}
           XRAY_PORT: ${{ secrets.XRAY_PORT }}
-          XRAY_ID: ${{ secrets.XRAY_ID }}
+          XRAY_ID: ${{ secrets.XRAY_ID1 }}
           XRAY_SERVER_NAME: ${{ secrets.XRAY_SERVER_NAME }}
           XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
           XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
