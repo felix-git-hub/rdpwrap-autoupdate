@@ -1,36 +1,112 @@
-# This is a basic workflow to help you get started with Actions
+name: 2h
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "master" branch
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+  schedule:
+    - cron: '0 */2 * * *'   # 每6小时整点执行一次
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+concurrency:
+  group: 2h-run
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  run-xray:
     runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6小时上限
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Generate xray config from secrets
+        env:
+          XRAY_ADDR: ${{ secrets.XRAY_ADDR }}
+          XRAY_PORT: ${{ secrets.XRAY_PORT }}
+          XRAY_ID: ${{ secrets.XRAY_ID2 }}
+          XRAY_SERVER_NAME: ${{ secrets.XRAY_SERVER_NAME }}
+          XRAY_PUBLIC_KEY: ${{ secrets.XRAY_PUBLIC_KEY }}
+          XRAY_SHORT_ID: ${{ secrets.XRAY_SHORT_ID }}
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          set -euo pipefail
+          cat >/tmp/xray-config.json <<EOF
+          {
+            "log": {
+              "access": "/dev/null",
+              "error": "/dev/null",
+              "loglevel": "info"
+            },
+            "inbounds": [],
+            "outbounds": [
+              {
+                "tag": "reverse-direct",
+                "protocol": "freedom",
+                "settings": {
+                  "ipsBlocked": [],
+                  "finalRules": [
+                    {
+                      "action": "allow",
+                      "network": "tcp,udp"
+                    }
+                  ]
+                }
+              },
+              {
+                "protocol": "blackhole",
+                "tag": "block",
+                "settings": {}
+              },
+              {
+                "tag": "reverse",
+                "protocol": "vless",
+                "settings": {
+                  "address": "${XRAY_ADDR}",
+                  "port": ${XRAY_PORT},
+                  "id": "${XRAY_ID}",
+                  "flow": "xtls-rprx-vision",
+                  "reverse": {
+                    "tag": "reverse-in"
+                  },
+                  "encryption": "none"
+                },
+                "streamSettings": {
+                  "network": "tcp",
+                  "security": "reality",
+                  "realitySettings": {
+                    "fingerprint": "chrome",
+                    "serverName": "${XRAY_SERVER_NAME}",
+                    "publicKey": "${XRAY_PUBLIC_KEY}",
+                    "spiderX": "",
+                    "shortId": "${XRAY_SHORT_ID}"
+                  }
+                }
+              }
+            ],
+            "routing": {
+              "rules": [
+                {
+                  "inboundTag": [
+                    "reverse-in"
+                  ],
+                  "outboundTag": "reverse-direct"
+                }
+              ]
+            }
+          }
+          EOF
+
+          # 检查 JSON 是否有效
+          jq . /tmp/xray-config.json >/dev/null
+
+      - name: Download xray
+        run: |
+          set -euo pipefail
+          curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          unzip -q /tmp/xray.zip -d /tmp/xray
+          chmod +x /tmp/xray/xray
+
+      - name: Run xray for 6 hours
+        run: |
+          set -euo pipefail
+          # 6小时 = 21600 秒，超时后让 action 结束
+          timeout 21600 /tmp/xray/xray run -c /tmp/xray-config.json || \
+            if [ $? -eq 124 ]; then echo "xray reached 6h runtime and exited by timeout"; exit 0; else exit 1; fi
