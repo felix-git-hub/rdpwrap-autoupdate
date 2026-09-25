@@ -2,7 +2,7 @@ name: 6h
 
 on:
   schedule:
-    - cron: '0 */3 * * *'   # 每6小时整点执行一次
+    - cron: '0 */5 * * *'   # 每6小时整点执行一次
   workflow_dispatch:
 
 concurrency:
