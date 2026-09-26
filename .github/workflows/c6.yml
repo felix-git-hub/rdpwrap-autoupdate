@@ -21,10 +21,13 @@ jobs:
         shell: bash
     env:
       XRAY_VERSION: ${{ secrets.C6_XRAY_VERSION }}
-      XRAY_DIR: ${{ runner.temp }}/xray-c6
-      XRAY_CONFIG: ${{ runner.temp }}/xray-c6.json
 
     steps:
+      - name: Initialize temporary paths
+        run: |
+          echo "XRAY_DIR=$RUNNER_TEMP/xray-c6" >> "$GITHUB_ENV"
+          echo "XRAY_CONFIG=$RUNNER_TEMP/xray-c6.json" >> "$GITHUB_ENV"
+
       - name: Generate XHTTP reverse config from secrets
         env:
           # 所有部署参数均从 Repository secrets 读取。
