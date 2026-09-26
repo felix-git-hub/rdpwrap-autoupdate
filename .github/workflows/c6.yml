@@ -1,0 +1,164 @@
+name: c6
+
+on:
+  schedule:
+    - cron: '0 */5 * * *' # 沿用 6h.yml 的 UTC 时间
+  workflow_dispatch:
+
+concurrency:
+  group: c6-run
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  run-xray:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      XRAY_VERSION: ${{ vars.C6_XRAY_VERSION || '26.9.9' }}
+      XRAY_DIR: ${{ runner.temp }}/xray-c6
+      XRAY_CONFIG: ${{ runner.temp }}/xray-c6.json
+
+    steps:
+      - name: Generate XHTTP reverse config from secrets
+        env:
+          # 已知参数预填；可通过同名 Actions Variables 覆盖。
+          XRAY_ADDR: ${{ vars.C6_XRAY_ADDR || 'cfcdn.datascientist.top' }}
+          XRAY_PORT: ${{ vars.C6_XRAY_PORT || '443' }}
+          # 待填写：这两项在 Actions Secrets 中创建，勿写入公开仓库。
+          XRAY_ID: ${{ secrets.C6_XRAY_ID }}
+          XRAY_ENCRYPTION: ${{ secrets.C6_XRAY_ENCRYPTION }}
+          XRAY_SERVER_NAME: ${{ vars.C6_XRAY_SERVER_NAME || vars.C6_XRAY_ADDR || 'cfcdn.datascientist.top' }}
+          XRAY_PATH: ${{ vars.C6_XRAY_PATH || '/ws/' }}
+          XRAY_MODE: ${{ vars.C6_XRAY_MODE || 'auto' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import json
+          import os
+          import uuid
+          from pathlib import Path
+
+          required = (
+              "XRAY_ADDR", "XRAY_PORT", "XRAY_ID",
+              "XRAY_SERVER_NAME", "XRAY_ENCRYPTION", "XRAY_PATH",
+          )
+          values = {key: os.environ.get(key, "").strip() for key in required}
+          missing = [f"C6_{key}" for key, value in values.items() if not value]
+          if missing:
+              raise SystemExit("Missing repository secrets: " + ", ".join(missing))
+          try:
+              port = int(values["XRAY_PORT"])
+              if not 1 <= port <= 65535:
+                  raise ValueError()
+          except ValueError:
+              raise SystemExit("C6_XRAY_PORT must be an integer from 1 to 65535")
+          try:
+              uuid.UUID(values["XRAY_ID"])
+          except ValueError:
+              raise SystemExit("C6_XRAY_ID must be a valid UUID")
+          if "://" in values["XRAY_ADDR"] or "/" in values["XRAY_ADDR"]:
+              raise SystemExit("C6_XRAY_ADDR must be a hostname or IP, not a URL")
+          if not values["XRAY_PATH"].startswith("/"):
+              raise SystemExit("C6_XRAY_PATH must start with /")
+          mode = os.environ.get("XRAY_MODE", "").strip() or "auto"
+          if mode not in {"auto", "packet-up", "stream-up", "stream-one"}:
+              raise SystemExit("C6_XRAY_MODE is not a supported XHTTP mode")
+
+          config = {
+              "log": {"access": "/dev/null", "loglevel": "warning"},
+              "inbounds": [],
+              "outbounds": [
+                  {
+                      "tag": "reverse-direct",
+                      "protocol": "freedom",
+                      "settings": {
+                          "finalRules": [{"action": "allow", "network": "tcp,udp"}],
+                      },
+                  },
+                  {"tag": "block", "protocol": "blackhole", "settings": {}},
+                  {
+                      "tag": "reverse-c6",
+                      "protocol": "vless",
+                      "settings": {
+                          "address": values["XRAY_ADDR"],
+                          "port": port,
+                          "id": values["XRAY_ID"],
+                          "flow": "xtls-rprx-vision",
+                          "reverse": {"tag": "reverse-in-c6"},
+                          "encryption": values["XRAY_ENCRYPTION"],
+                      },
+                      "streamSettings": {
+                          "network": "xhttp",
+                          "security": "tls",
+                          "tlsSettings": {
+                              "serverName": values["XRAY_SERVER_NAME"],
+                              "fingerprint": "chrome",
+                              "alpn": ["h2"],
+                          },
+                          "xhttpSettings": {
+                              "path": values["XRAY_PATH"],
+                              "mode": mode,
+                          },
+                      },
+                  },
+              ],
+              "routing": {
+                  "rules": [{
+                      "inboundTag": ["reverse-in-c6"],
+                      "outboundTag": "reverse-direct",
+                  }],
+              },
+          }
+          # 用 JSON 序列化转义参数，不打印实际 UUID 和加密参数。
+          path = Path(os.environ["XRAY_CONFIG"])
+          with path.open("w", encoding="utf-8") as handle:
+              json.dump(config, handle, indent=2)
+          path.chmod(0o600)
+          print("XHTTP reverse config generated.")
+          PY
+
+      - name: Download Xray
+        run: |
+          set -euo pipefail
+          [[ "$XRAY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "XRAY_VERSION must use a numeric release version such as 26.9.9"
+            exit 1
+          }
+          mkdir -p "$XRAY_DIR"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+            --output "$XRAY_DIR/xray.zip" \
+            "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"
+          unzip -q "$XRAY_DIR/xray.zip" -d "$XRAY_DIR"
+          chmod +x "$XRAY_DIR/xray"
+
+      - name: Validate Xray config
+        run: |
+          set -euo pipefail
+          "$XRAY_DIR/xray" run -test -c "$XRAY_CONFIG"
+
+      - name: Run Xray for up to 350 minutes
+        run: |
+          set -euo pipefail
+          # 给 360 分钟 job 上限留 10 分钟用于准备和退出。
+          status=0
+          timeout --signal=TERM --kill-after=15s 21000 \
+            "$XRAY_DIR/xray" run -c "$XRAY_CONFIG" || status=$?
+          if [ "$status" -eq 124 ]; then
+            echo "Xray reached the configured runtime limit."
+          elif [ "$status" -eq 0 ]; then
+            echo "Xray exited before the runtime limit."
+            exit 1
+          else
+            exit "$status"
+          fi
+
+      - name: Remove generated config
+        if: always()
+        run: rm -f -- "$XRAY_CONFIG"
