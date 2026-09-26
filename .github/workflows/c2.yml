@@ -20,22 +20,22 @@ jobs:
       run:
         shell: bash
     env:
-      XRAY_VERSION: ${{ vars.C2_XRAY_VERSION || '26.9.9' }}
+      XRAY_VERSION: ${{ secrets.C2_XRAY_VERSION }}
       XRAY_DIR: ${{ runner.temp }}/xray-c2
       XRAY_CONFIG: ${{ runner.temp }}/xray-c2.json
 
     steps:
       - name: Generate XHTTP reverse config from secrets
         env:
-          # 已知参数预填；可通过同名 Actions Variables 覆盖。
-          XRAY_ADDR: ${{ vars.C2_XRAY_ADDR || 'alicdn.datascientist.top' }}
-          XRAY_PORT: ${{ vars.C2_XRAY_PORT || '443' }}
+          # 所有部署参数均从 Repository secrets 读取。
+          XRAY_ADDR: ${{ secrets.C2_XRAY_ADDR }}
+          XRAY_PORT: ${{ secrets.C2_XRAY_PORT }}
           # 待填写：这两项在 Actions Secrets 中创建，勿写入公开仓库。
           XRAY_ID: ${{ secrets.C2_XRAY_ID }}
           XRAY_ENCRYPTION: ${{ secrets.C2_XRAY_ENCRYPTION }}
-          XRAY_SERVER_NAME: ${{ vars.C2_XRAY_SERVER_NAME || vars.C2_XRAY_ADDR || 'alicdn.datascientist.top' }}
-          XRAY_PATH: ${{ vars.C2_XRAY_PATH || '/ws/' }}
-          XRAY_MODE: ${{ vars.C2_XRAY_MODE || 'auto' }}
+          XRAY_SERVER_NAME: ${{ secrets.C2_XRAY_SERVER_NAME }}
+          XRAY_PATH: ${{ secrets.C2_XRAY_PATH }}
+          XRAY_MODE: ${{ secrets.C2_XRAY_MODE }}
         run: |
           set -euo pipefail
           umask 077
@@ -48,6 +48,7 @@ jobs:
           required = (
               "XRAY_ADDR", "XRAY_PORT", "XRAY_ID",
               "XRAY_SERVER_NAME", "XRAY_ENCRYPTION", "XRAY_PATH",
+              "XRAY_MODE", "XRAY_VERSION",
           )
           values = {key: os.environ.get(key, "").strip() for key in required}
           missing = [f"C2_{key}" for key, value in values.items() if not value]
@@ -67,7 +68,7 @@ jobs:
               raise SystemExit("C2_XRAY_ADDR must be a hostname or IP, not a URL")
           if not values["XRAY_PATH"].startswith("/"):
               raise SystemExit("C2_XRAY_PATH must start with /")
-          mode = os.environ.get("XRAY_MODE", "").strip() or "auto"
+          mode = values["XRAY_MODE"]
           if mode not in {"auto", "packet-up", "stream-up", "stream-one"}:
               raise SystemExit("C2_XRAY_MODE is not a supported XHTTP mode")
 
@@ -128,7 +129,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$XRAY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "XRAY_VERSION must use a numeric release version such as 26.9.9"
+            echo "XRAY_VERSION must use a numeric release version in major.minor.patch format"
             exit 1
           }
           mkdir -p "$XRAY_DIR"
