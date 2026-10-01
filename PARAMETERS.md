@@ -2,13 +2,14 @@
 
 所有部署参数均在仓库 Settings → Secrets and variables → Actions → Repository secrets 中配置。工作流只引用 Secret 名称，不包含实际连接地址、端口、路径或凭据，也不读取 Actions Variables。
 
+更换 CDN 时，每条线路只修改对应的 `XRAY_ADDR` Secret；连接地址和 TLS SNI 会同时使用该值。修改后重新运行对应工作流生效。
+
 下表不展示实际值。c2 对应阿里云 CDN，c6 对应 Cloudflare CDN。
 
 | c2 Secret 名称 | c6 Secret 名称 | 定义 |
 |---|---|---|
-| `C2_XRAY_ADDR` | `C6_XRAY_ADDR` | CDN 连接域名，不含协议与路径 |
+| `C2_XRAY_ADDR` | `C6_XRAY_ADDR` | CDN 连接域名，同时用作 TLS SNI；不含协议与路径，需与 CDN 证书匹配 |
 | `C2_XRAY_PORT` | `C6_XRAY_PORT` | Runner 连接 CDN 的端口，不是回源端口 |
-| `C2_XRAY_SERVER_NAME` | `C6_XRAY_SERVER_NAME` | TLS SNI，需与 CDN 证书匹配 |
 | `C2_XRAY_PATH` | `C6_XRAY_PATH` | XHTTP 路径，与服务端一致 |
 | `C2_XRAY_MODE` | `C6_XRAY_MODE` | XHTTP 传输模式 |
 | `C2_XRAY_VERSION` | `C6_XRAY_VERSION` | Xray 版本号，不带 v 前缀 |
