@@ -36,7 +36,6 @@ jobs:
           # 待填写：这两项在 Actions Secrets 中创建，勿写入公开仓库。
           XRAY_ID: ${{ secrets.C2_XRAY_ID }}
           XRAY_ENCRYPTION: ${{ secrets.C2_XRAY_ENCRYPTION }}
-          XRAY_SERVER_NAME: ${{ secrets.C2_XRAY_SERVER_NAME }}
           XRAY_PATH: ${{ secrets.C2_XRAY_PATH }}
           XRAY_MODE: ${{ secrets.C2_XRAY_MODE }}
         run: |
@@ -50,7 +49,7 @@ jobs:
 
           required = (
               "XRAY_ADDR", "XRAY_PORT", "XRAY_ID",
-              "XRAY_SERVER_NAME", "XRAY_ENCRYPTION", "XRAY_PATH",
+              "XRAY_ENCRYPTION", "XRAY_PATH",
               "XRAY_MODE", "XRAY_VERSION",
           )
           values = {key: os.environ.get(key, "").strip() for key in required}
@@ -102,7 +101,7 @@ jobs:
                           "network": "xhttp",
                           "security": "tls",
                           "tlsSettings": {
-                              "serverName": values["XRAY_SERVER_NAME"],
+                              "serverName": values["XRAY_ADDR"],
                               "fingerprint": "chrome",
                               "alpn": ["h2"],
                           },
