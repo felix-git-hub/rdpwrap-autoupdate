@@ -100,9 +100,28 @@ jobs:
       - name: Download xray
         run: |
           set -euo pipefail
-          curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
-          unzip -q /tmp/xray.zip -d /tmp/xray
-          chmod +x /tmp/xray/xray
+          XRAY_DOWNLOAD_DIR=/tmp/xray
+          XRAY_DOWNLOAD_URL=https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+          mkdir -p "$XRAY_DOWNLOAD_DIR"
+          for attempt in 1 2 3 4; do
+            rm -f -- "$XRAY_DOWNLOAD_DIR/xray.zip.part"
+            if curl --fail --location --connect-timeout 20 --max-time 90 \
+                --output "$XRAY_DOWNLOAD_DIR/xray.zip.part" "$XRAY_DOWNLOAD_URL" && \
+                unzip -tq "$XRAY_DOWNLOAD_DIR/xray.zip.part" >/dev/null 2>&1; then
+              mv -- "$XRAY_DOWNLOAD_DIR/xray.zip.part" "$XRAY_DOWNLOAD_DIR/xray.zip"
+              break
+            fi
+            rm -f -- "$XRAY_DOWNLOAD_DIR/xray.zip.part"
+            if [ "$attempt" -eq 4 ]; then
+              echo "Xray download failed after 4 attempts (request or ZIP validation failed)." >&2
+              exit 1
+            fi
+            delay=$((attempt * 10))
+            echo "Xray download attempt $attempt failed; retrying in ${delay}s." >&2
+            sleep "$delay"
+          done
+          unzip -q "$XRAY_DOWNLOAD_DIR/xray.zip" -d "$XRAY_DOWNLOAD_DIR"
+          chmod +x "$XRAY_DOWNLOAD_DIR/xray"
 
       - name: Run xray for 6 hours
         run: |
